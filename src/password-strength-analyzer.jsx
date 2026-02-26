@@ -1,6 +1,8 @@
 // src/components/PasswordStrengthAnalyzer.jsx
 import { useState, useEffect } from 'react';
 import './password-strength-analyzer.css';
+import { checkPasswordBreach } from './breachDetectionService';
+import { triggerBreachAlert } from './breachAlarmService';
 
 // ============================================================================
 // Constants (same as original, with minor tweaks for adaptability)
@@ -28,8 +30,11 @@ const ATTACK_SPEEDS = [
 export default function PasswordStrengthAnalyzer() {
   // State management
   const [password, setPassword] = useState('');      // Password input
+  const [email, setEmail] = useState('');            // Email for breach checking
   const [showPassword, setShowPassword] = useState(false); // Toggle to show/hide password
   const [inputEnabled, setInputEnabled] = useState(false); // Toggle to enable/disable input
+  const [breachStatus, setBreachStatus] = useState(null); // Breach detection result
+  const [checkingBreach, setCheckingBreach] = useState(false); // Loading state
   const [analysis, setAnalysis] = useState({         // All analysis results
     category: 'Unknown',
     emoji: '⚪',
@@ -49,6 +54,13 @@ export default function PasswordStrengthAnalyzer() {
     if (inputEnabled && password) {
       const result = analyze(password);
       setAnalysis(result);
+      
+      // Check for breaches if email is provided
+      if (email) {
+        checkBreachStatus();
+      } else {
+        setBreachStatus(null);
+      }
     } else {
       // Reset when disabled or empty
       setAnalysis({
@@ -64,8 +76,30 @@ export default function PasswordStrengthAnalyzer() {
         color: '#bbc3d6',
         frac: 0
       });
+      setBreachStatus(null);
     }
-  }, [password, inputEnabled]);
+  }, [password, inputEnabled, email]);
+
+  // Check if password has been breached
+  const checkBreachStatus = async () => {
+    if (!password || !email) return;
+    
+    setCheckingBreach(true);
+    try {
+      const result = await checkPasswordBreach(password, email);
+      setBreachStatus(result);
+      
+      // Trigger alarm if breached
+      if (result.isBreached) {
+        await triggerBreachAlert(1);
+      }
+    } catch (err) {
+      console.error('Error checking breach status:', err);
+      setBreachStatus({ isBreached: false, count: 0, breachNames: [] });
+    } finally {
+      setCheckingBreach(false);
+    }
+  };
 
   // Toggle input enable/reload (adapted from original)
   const handleToggle = () => {
@@ -104,10 +138,48 @@ export default function PasswordStrengthAnalyzer() {
         )}
       </div>
 
+      {/* Email Input for Breach Checking */}
+      {inputEnabled && (
+        <div className="input-section" style={{marginTop: '16px'}}>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="Enter email to check for breaches (optional)"
+            style={{width: '100%'}}
+          />
+          <small style={{display: 'block', marginTop: '8px', color: '#888'}}>
+            💡 Tip: Enter your email to check if this password has been found in known breaches
+          </small>
+        </div>
+      )}
+
       {/* Typed Password Display */}
       <div className="password-display">
         {password || 'Your password will appear here'}
       </div>
+
+      {/* Breach Status */}
+      {inputEnabled && email && (
+        <div style={{margin: '16px 0', padding: '12px 16px', borderRadius: '12px', background: breachStatus?.isBreached ? 'rgba(255,92,92,0.15)' : 'rgba(200,255,0,0.15)', border: `1.5px solid ${breachStatus?.isBreached ? 'rgba(255,92,92,0.3)' : 'rgba(200,255,0,0.3)'}`, color: breachStatus?.isBreached ? '#FF5C5C' : '#C8FF00'}}>
+          {checkingBreach ? (
+            <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
+              <span style={{animation: 'spin 1s linear infinite'}}>🔍</span>
+              <span>Checking breach database...</span>
+            </div>
+          ) : breachStatus?.isBreached ? (
+            <>
+              <strong>🚨 Breach Alert!</strong>
+              <p style={{margin: '4px 0 0 0', fontSize: '0.9rem'}}>This password has been found in {breachStatus.count} public breach{breachStatus.count > 1 ? 'es' : ''}. Do not use this password!</p>
+            </>
+          ) : breachStatus ? (
+            <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
+              <span>✅</span>
+              <span>Good news! This password has not been found in known breaches.</span>
+            </div>
+          ) : null}
+        </div>
+      )}
 
       {/* Strength Bar */}
       <div className="strength-bar">

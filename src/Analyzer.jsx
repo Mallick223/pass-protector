@@ -4,6 +4,7 @@
 // ============================================================================
 
 import { useState, useEffect } from 'react';
+import zxcvbn from 'zxcvbn';
 
 // ============================================================================
 // Constants (same as original, with minor tweaks for adaptability)
@@ -34,17 +35,31 @@ export default function PasswordStrengthAnalyzer() {
   const [showPassword, setShowPassword] = useState(false); // Added: Toggle to show/hide password
   const [inputEnabled, setInputEnabled] = useState(false); // Toggle to enable/disable input (as in original)
   const [analysis, setAnalysis] = useState({         // All analysis results
-    category: 'Unknown',
-    emoji: '⚪',
-    entropy: 0,
-    length: 0,
-    classes: [],
-    charset: 0,
-    guesses: 0,
-    crackTimes: Array(5).fill('—'),
-    suggestions: ['Enter a password to analyze'],
-    color: '#bbc3d6',
-    frac: 0
+    // Entropy-based metrics
+    entropy: {
+      category: 'Unknown',
+      emoji: '⚪',
+      entropy: 0,
+      length: 0,
+      classes: [],
+      charset: 0,
+      guesses: 0,
+      crackTimes: Array(5).fill('—'),
+      color: '#bbc3d6',
+      frac: 0
+    },
+    // Zxcvbn metrics
+    zxcvbn: {
+      score: 0,
+      category: 'Unknown',
+      emoji: '⚪',
+      feedback: [],
+      guesses: 0,
+      crackTimes: Array(5).fill('—'),
+      color: '#bbc3d6',
+      frac: 0
+    },
+    suggestions: ['Enter a password to analyze']
   });
 
   // Run analysis on password change
@@ -55,17 +70,29 @@ export default function PasswordStrengthAnalyzer() {
     } else {
       // Reset when disabled or empty
       setAnalysis({
-        category: 'Unknown',
-        emoji: '⚪',
-        entropy: 0,
-        length: 0,
-        classes: [],
-        charset: 0,
-        guesses: 0,
-        crackTimes: Array(5).fill('—'),
-        suggestions: ['Enter a password to analyze'],
-        color: '#bbc3d6',
-        frac: 0
+        entropy: {
+          category: 'Unknown',
+          emoji: '⚪',
+          entropy: 0,
+          length: 0,
+          classes: [],
+          charset: 0,
+          guesses: 0,
+          crackTimes: Array(5).fill('—'),
+          color: '#bbc3d6',
+          frac: 0
+        },
+        zxcvbn: {
+          score: 0,
+          category: 'Unknown',
+          emoji: '⚪',
+          feedback: [],
+          guesses: 0,
+          crackTimes: Array(5).fill('—'),
+          color: '#bbc3d6',
+          frac: 0
+        },
+        suggestions: ['Enter a password to analyze']
       });
     }
   }, [password, inputEnabled]);
@@ -129,36 +156,78 @@ export default function PasswordStrengthAnalyzer() {
       </div>
 
       {/* Analysis Cards */}
-      <div id="cardCategory" className="analysis-card" style={{ background: shadeColor(analysis.color, 20) }}>
-        <h3>Strength Category</h3>
-        <p id="cat">{analysis.category} {analysis.emoji}</p>
-        <p id="ent">Entropy: {analysis.entropy.toFixed(2)} bits</p>
-        <p id="len">Length: {analysis.length}</p>
-      </div>
+      <div className="analysis-container">
+        <h2 style={{ marginTop: '20px', textAlign: 'center', color: '#333' }}>Entropy-Based Analysis</h2>
+        
+        <div id="cardCategory" className="analysis-card" style={{ background: shadeColor(analysis.entropy.color, 20) }}>
+          <h3>Strength Category</h3>
+          <p id="cat">{analysis.entropy.category} {analysis.entropy.emoji}</p>
+          <p id="ent">Entropy: {analysis.entropy.entropy.toFixed(2)} bits</p>
+          <p id="len">Length: {analysis.entropy.length}</p>
+        </div>
 
-      <div id="cardBasic" className="analysis-card" style={{ background: shadeColor(analysis.color, 10) }}>
-        <h3>Basic Info</h3>
-        <p id="classes">Classes: {analysis.classes.join(', ') || 'none'}</p>
-        <p id="charset">Charset Size: {analysis.charset}</p>
-        <p id="guesses">Guesses Needed: {humanNumber(analysis.guesses)}</p>
-      </div>
+        <div id="cardBasic" className="analysis-card" style={{ background: shadeColor(analysis.entropy.color, 10) }}>
+          <h3>Basic Info</h3>
+          <p id="classes">Classes: {analysis.entropy.classes.join(', ') || 'none'}</p>
+          <p id="charset">Charset Size: {analysis.entropy.charset}</p>
+          <p id="guesses">Guesses Needed: {humanNumber(analysis.entropy.guesses)}</p>
+        </div>
 
-      <div id="cardCrack" className="analysis-card" style={{ background: shadeColor(analysis.color, 0) }}>
-        <h3>Crack Times</h3>
-        {analysis.crackTimes.map((time, i) => (
-          <p key={i} id={`ct${i+1}`}>
-            {ATTACK_SPEEDS[i].label}: {time}
-          </p>
-        ))}
-      </div>
-
-      <div id="cardSuggest" className="analysis-card" style={{ background: shadeColor(analysis.color, -10) }}>
-        <h3>Suggestions</h3>
-        <ul id="suggestions">
-          {analysis.suggestions.map((s, i) => (
-            <li key={i}>{s}</li>
+        <div id="cardCrack" className="analysis-card" style={{ background: shadeColor(analysis.entropy.color, 0) }}>
+          <h3>Crack Times (Entropy Method)</h3>
+          {analysis.entropy.crackTimes.map((time, i) => (
+            <p key={`entropy-${i}`} id={`ct${i+1}`}>
+              {ATTACK_SPEEDS[i].label}: {time}
+            </p>
           ))}
-        </ul>
+        </div>
+
+        <h2 style={{ marginTop: '30px', textAlign: 'center', color: '#333' }}>Zxcvbn Algorithm Analysis</h2>
+
+        <div id="cardZxcvbn" className="analysis-card" style={{ background: shadeColor(analysis.zxcvbn.color, 20) }}>
+          <h3>Strength Score (Zxcvbn)</h3>
+          <p id="zxcvbn-cat">
+            {analysis.zxcvbn.category} {analysis.zxcvbn.emoji}
+          </p>
+          <p id="zxcvbn-score">
+            Score: {analysis.zxcvbn.score}/4 -{' '}
+            {['Very Weak', 'Weak', 'Fair', 'Good', 'Strong'][analysis.zxcvbn.score]}
+          </p>
+          <p id="zxcvbn-guesses">Guesses to Crack: {humanNumber(analysis.zxcvbn.guesses)}</p>
+        </div>
+
+        <div id="cardZxcvbnCrack" className="analysis-card" style={{ background: shadeColor(analysis.zxcvbn.color, 0) }}>
+          <h3>Crack Times (Zxcvbn Estimate)</h3>
+          {analysis.zxcvbn.crackTimes.map((time, i) => (
+            <p key={`zxcvbn-${i}`} id={`zxcvbn-ct${i+1}`}>
+              {ATTACK_SPEEDS[i].label}: {time}
+            </p>
+          ))}
+        </div>
+
+        <div id="cardZxcvbnFeedback" className="analysis-card" style={{ background: shadeColor(analysis.zxcvbn.color, 10) }}>
+          <h3>Zxcvbn Feedback</h3>
+          {analysis.zxcvbn.feedback && analysis.zxcvbn.feedback.length > 0 ? (
+            <ul id="zxcvbn-feedback">
+              {analysis.zxcvbn.feedback.map((feedback, i) => (
+                <li key={i}>{feedback}</li>
+              ))}
+            </ul>
+          ) : (
+            <p>No specific feedback - password meets security standards!</p>
+          )}
+        </div>
+
+        <div id="cardSuggest" className="analysis-card" style={{ background: '#f0f0f0' }}>
+          <h3>Combined Suggestions</h3>
+          <ul id="suggestions">
+            {analysis.suggestions && analysis.suggestions.length > 0 ? (
+              analysis.suggestions.map((s, i) => <li key={i}>{s}</li>)
+            ) : (
+              <li>Password is strong according to both methods!</li>
+            )}
+          </ul>
+        </div>
       </div>
 
       {/* Optional: Add custom CSS in a separate file or inline */}
@@ -190,13 +259,112 @@ export default function PasswordStrengthAnalyzer() {
 // ============================================================================
 
 /**
- * Analyze password strength using entropy and character set analysis
+ * Analyze password strength using dual approach: entropy-based and zxcvbn algorithm
  * Returns object with all metrics for React state
  * 
  * @param {string} pw - The password to analyze
- * @returns {object} Analysis results
+ * @returns {object} Analysis results with both methods
  */
 function analyze(pw) {
+  // ============ ENTROPY-BASED ANALYSIS ============
+  const entropyAnalysis = analyzeEntropy(pw);
+
+  // ============ ZXCVBN ANALYSIS ============
+  const zxcvbnResult = zxcvbn(pw);
+  
+  // Map zxcvbn score (0-4) to categories and colors
+  const zxcvbnCategories = [
+    { name: 'Very Weak', emoji: '🔴', color: '#e74c3c' },
+    { name: 'Weak', emoji: '🟠', color: '#f39c12' },
+    { name: 'Fair', emoji: '🟡', color: '#f1c40f' },
+    { name: 'Good', emoji: '🟢', color: '#2ecc71' },
+    { name: 'Strong', emoji: '💪', color: '#18a689' }
+  ];
+
+  const zxcvbnScore = zxcvbnResult.score;
+  const zxcvbnMeta = zxcvbnCategories[zxcvbnScore];
+  
+  // Calculate crack times from zxcvbn guesses estimate
+  const zxcvbnCrackTimes = ATTACK_SPEEDS.map(({ speed }) =>
+    formatTime(zxcvbnResult.guesses / speed)
+  );
+
+  // Prepare feedback from zxcvbn
+  const zxcvbnFeedback = [];
+  if (zxcvbnResult.feedback.warning) {
+    zxcvbnFeedback.push(`⚠️ Warning: ${zxcvbnResult.feedback.warning}`);
+  }
+  if (zxcvbnResult.feedback.suggestions && zxcvbnResult.feedback.suggestions.length > 0) {
+    zxcvbnResult.feedback.suggestions.forEach(s => {
+      zxcvbnFeedback.push(`💡 ${s}`);
+    });
+  }
+
+  // ============ COMBINED SUGGESTIONS ============
+  const combinedSuggestions = [];
+  
+  // Add entropy recommendations
+  if (entropyAnalysis.length < 12) {
+    combinedSuggestions.push('📏 Increase length — aim for 12+ characters for better security.');
+  }
+  if (!entropyAnalysis.classes.includes('lowercase')) {
+    combinedSuggestions.push('🔤 Include lowercase letters (a-z).');
+  }
+  if (!entropyAnalysis.classes.includes('uppercase')) {
+    combinedSuggestions.push('🔤 Include uppercase letters (A-Z).');
+  }
+  if (!entropyAnalysis.classes.includes('digits')) {
+    combinedSuggestions.push('🔢 Include digits (0-9).');
+  }
+  if (!entropyAnalysis.classes.includes('symbols')) {
+    combinedSuggestions.push('🔣 Include symbols (!@#$%^&*).');
+  }
+
+  // Add zxcvbn feedback if warnings exist
+  if (zxcvbnFeedback.length > 0) {
+    combinedSuggestions.push(...zxcvbnFeedback);
+  }
+
+  // General best practices
+  if (combinedSuggestions.length === 0) {
+    combinedSuggestions.push('✅ Use a password manager: Generate and store unique, long passwords per site.');
+  } else {
+    combinedSuggestions.push('🔐 Use a password manager: Generate and store unique, long passwords per site.');
+  }
+
+  return {
+    entropy: {
+      category: entropyAnalysis.category,
+      emoji: entropyAnalysis.emoji,
+      entropy: entropyAnalysis.entropy,
+      length: entropyAnalysis.length,
+      classes: entropyAnalysis.classes,
+      charset: entropyAnalysis.charset,
+      guesses: entropyAnalysis.guesses,
+      crackTimes: entropyAnalysis.crackTimes,
+      color: entropyAnalysis.color,
+      frac: entropyAnalysis.frac
+    },
+    zxcvbn: {
+      score: zxcvbnScore,
+      category: zxcvbnMeta.name,
+      emoji: zxcvbnMeta.emoji,
+      feedback: zxcvbnFeedback,
+      guesses: zxcvbnResult.guesses,
+      crackTimes: zxcvbnCrackTimes,
+      color: zxcvbnMeta.color,
+      frac: ((zxcvbnScore + 1) / 5) * 100
+    },
+    suggestions: combinedSuggestions
+  };
+}
+
+/**
+ * Analyze password using entropy-based method
+ * @param {string} pw - The password to analyze
+ * @returns {object} Entropy analysis results
+ */
+function analyzeEntropy(pw) {
   // Character Class Detection
   const hasLower = /[a-z]/.test(pw);
   const hasUpper = /[A-Z]/.test(pw);
@@ -218,7 +386,7 @@ function analyze(pw) {
   // Guesses Needed
   const guesses = Math.pow(charset, length) / 2;
 
-  // Strength Categorization (added more nuanced thresholds for adaptability)
+  // Strength Categorization
   let category = 'Unknown', color = '#bbc3d6', emoji = '⚪';
   if (entropy < 28) {
     category = 'Very Weak'; color = '#e74c3c'; emoji = '🔴';
@@ -238,18 +406,6 @@ function analyze(pw) {
   // Crack Times
   const crackTimes = ATTACK_SPEEDS.map(({ speed }) => formatTime(guesses / speed));
 
-  // Suggestions (improved with more adaptive tips)
-  const suggestions = [];
-  if (length < 12) suggestions.push('Increase length — aim for 12+ characters for better security.');
-  if (!hasLower) suggestions.push('Include lowercase letters (a-z).');
-  if (!hasUpper) suggestions.push('Include uppercase letters (A-Z).');
-  if (!hasDigit) suggestions.push('Include digits (0-9).');
-  if (!hasSymbol) suggestions.push('Include symbols (!@#$%^&*).');
-  if (pw.length > 0 && pw.toLowerCase() === pw) suggestions.push('Mix case: Avoid all-lowercase for better entropy.');
-  suggestions.push("Try a passphrase: Combine unrelated words like 'coffee-wagon-silver'.");
-  suggestions.push('Avoid common patterns: No dictionary words or simple substitutions (e.g., p@ssw0rd).');
-  suggestions.push('Use a password manager: Generate and store unique, long passwords per site.');
-
   return {
     category,
     emoji,
@@ -264,7 +420,6 @@ function analyze(pw) {
     charset,
     guesses,
     crackTimes,
-    suggestions,
     color,
     frac
   };

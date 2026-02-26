@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 import PasswordStrengthAnalyzer from './password-strength-analyzer';
 import './password-strength-analyzer.css';
 import { encryptPassword, decryptPassword, encryptPasswordEntry, generateSecurePassword } from './encryptionService';
-import { simulateBreachDetection, isProperEmail } from './breachDetectionService';
+import { checkPasswordBreach, isProperEmail } from './breachDetectionService';
+import { triggerBreachAlert, supportsAudio, supportsNotifications } from './breachAlarmService';
 import { handleGoogleSignInSuccess, handleGoogleSignInError } from './googleAuthService';
 
 const style = `
@@ -939,18 +940,62 @@ function Dashboard({ userName, userEmail }) {
   const [toast, setToast] = useState(null);
   const [viewingPassword, setViewingPassword] = useState(null);
   const [showAlerts, setShowAlerts] = useState(true);
+  const [breachStatus, setBreachStatus] = useState({});
+  const [isCheckingBreaches, setIsCheckingBreaches] = useState(false);
+  const [alarmTriggered, setAlarmTriggered] = useState(false);
   
   // Create password list with user's email for breach detection
   const dashboardPasswords = passwords.map((p, i) => ({
     ...p,
     email: isProperEmail(userEmail) ? userEmail : p.email,
-    displayEmail: isProperEmail(userEmail) ? userEmail : p.user
+    displayEmail: isProperEmail(userEmail) ? userEmail : p.user,
+    breachStatus: breachStatus[i] || p.breachStatus
   }));
   
   // Only count breaches for passwords with proper email addresses
   const breachedCount = dashboardPasswords.filter(p => isProperEmail(p.email) && p.breachStatus?.isBreached).length;
   const strongCount = passwords.filter(p => p.strength === "strong").length;
   const weakCount = passwords.filter(p => p.strength === "weak").length;
+  
+  // Check all passwords for breaches when dashboard loads
+  useEffect(() => {
+    const checkAllBreaches = async () => {
+      setIsCheckingBreaches(true);
+      try {
+        const newBreachStatus = {};
+        let foundBreaches = 0;
+        
+        for (let i = 0; i < dashboardPasswords.length; i++) {
+          const p = dashboardPasswords[i];
+          if (isProperEmail(p.email)) {
+            try {
+              const result = await checkPasswordBreach(p.password, p.email);
+              newBreachStatus[i] = result;
+              if (result.isBreached) foundBreaches++;
+            } catch (err) {
+              console.error(`Error checking breach for ${p.site}:`, err);
+              newBreachStatus[i] = { isBreached: false, count: 0, breachNames: [] };
+            }
+          }
+        }
+        
+        setBreachStatus(newBreachStatus);
+        
+        // Trigger alarm if breaches found and not already triggered
+        if (foundBreaches > 0 && !alarmTriggered) {
+          setToast(`🚨 Found ${foundBreaches} breached password${foundBreaches > 1 ? 's' : ''}!`);
+          await triggerBreachAlert(foundBreaches);
+          setAlarmTriggered(true);
+        }
+      } catch (err) {
+        console.error('Error checking breaches:', err);
+      } finally {
+        setIsCheckingBreaches(false);
+      }
+    };
+    
+    checkAllBreaches();
+  }, []);
   
   const copy = (site) => { setToast(`✅ ${site} password copied!`); setTimeout(()=>setToast(null),2000); };
   
@@ -965,6 +1010,14 @@ function Dashboard({ userName, userEmail }) {
   
   return (
     <div className="dashboard">
+      {isCheckingBreaches && (
+        <div style={{background:"rgba(56,207,255,0.1)",border:"1.5px solid rgba(56,207,255,0.3)",borderRadius:"16px",padding:"clamp(16px,3vw,24px)",marginBottom:"24px",animation:"slide-down 0.4s ease both"}}>
+          <div style={{display:"flex",alignItems:"center",gap:"12px",color:"var(--sky)",fontSize:"clamp(0.95rem,2.2vw,1.1rem)"}}>
+            <span style={{animation:"spin 1s linear infinite"}}>🔍</span>
+            <span>Checking {dashboardPasswords.length} passwords for breaches...</span>
+          </div>
+        </div>
+      )}
       {breachedCount > 0 && showAlerts && (
         <div className="breach-alert-banner">
           <div className="breach-alert-content">
