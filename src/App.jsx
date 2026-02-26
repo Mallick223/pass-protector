@@ -725,7 +725,7 @@ function Login({ setPage, setLoggedIn, setUserName, setUserEmail }) {
     // Initialize Google Sign-In button
     if (window.google) {
       google.accounts.id.initialize({
-        client_id: '979381798334-45k1fff534lrrfcihljd43vr53p6v596.apps.googleusercontent.com', // Replace with your Google Client ID
+        client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
         callback: handleGoogleLogin
       });
       google.accounts.id.renderButton(
@@ -827,7 +827,7 @@ function Register({ setPage, setLoggedIn, setUserName, setUserEmail }) {
     // Initialize Google Sign-In button for Register
     if (window.google) {
       google.accounts.id.initialize({
-        client_id: 'YOUR_GOOGLE_CLIENT_ID_HERE', // Replace with your Google Client ID
+        client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
         callback: handleGoogleRegister
       });
       google.accounts.id.renderButton(
